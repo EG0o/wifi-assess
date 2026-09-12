@@ -1,27 +1,34 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"sort"
 
+	"wifi-assess/internal/assessment"
 	"wifi-assess/internal/capture"
+	"wifi-assess/internal/detection"
 	"wifi-assess/internal/discovery"
+	"wifi-assess/internal/storage"
 	"wifi-assess/internal/wifi"
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		fmt.Println("Usage: wifi-assess <capture.pcapng>")
+	baselinePath := flag.String("baseline", "", "path to a previously saved baseline JSON file to compare against")
+	saveBaselinePath := flag.String("save-baseline", "", "path to save this run's baseline JSON for future comparisons")
+	flag.Parse()
+
+	args := flag.Args()
+	if len(args) != 1 {
+		fmt.Println("Usage: wifi-assess [-baseline file] [-save-baseline file] <capture.pcapng>")
 		os.Exit(1)
 	}
-
-	filename := os.Args[1]
+	filename := args[0]
 
 	source := capture.NewPCAPSource(filename)
-
 	if err := source.Open(); err != nil {
 		log.Fatalf("failed to open capture: %v", err)
 	}
@@ -69,7 +76,6 @@ func main() {
 		types = append(types, t)
 	}
 	sort.Strings(types)
-
 	for _, t := range types {
 		fmt.Printf("  %-30s %d\n", t, frameCounts[t])
 	}
@@ -108,5 +114,51 @@ func main() {
 		}
 		fmt.Printf("  %-17s  probes=%-5d  assoc=%s  probed_ssids=%v\n",
 			c.MAC, c.ProbeRequestCount, assoc, c.ProbedSSIDs)
+	}
+
+	// --- Phase 4: rule-based assessment ---
+	findings := assessment.DefaultEngine().AssessAccessPoints(aps)
+
+	// --- Phase 5: detection ---
+	for _, dup := range detection.FindDuplicateSSIDs(aps) {
+		findings = append(findings, detection.DuplicateSSIDToFinding(dup))
+	}
+
+	if *baselinePath != "" {
+		prev, err := storage.LoadBaseline(*baselinePath)
+		if err != nil {
+			log.Printf("could not load baseline %s: %v", *baselinePath, err)
+		} else {
+			current := discovery.NewBaseline(tracker)
+			diff := prev.Diff(current)
+			for _, a := range detection.FromBaselineDiff(diff) {
+				findings = append(findings, detection.AnomalyToFinding(a))
+			}
+		}
+	}
+
+	fmt.Println()
+	fmt.Printf("Findings (%d):\n", len(findings))
+	for _, f := range findings {
+		label := f.BSSID
+		if f.SSID != "" {
+			if label != "" {
+				label += " (" + f.SSID + ")"
+			} else {
+				label = f.SSID
+			}
+		}
+		fmt.Printf("  [%-10s] %-30s %s\n", f.Severity, label, f.Title)
+		fmt.Printf("               Evidence: %s\n", f.Evidence)
+		fmt.Printf("               Recommendation: %s\n", f.Recommendation)
+	}
+
+	if *saveBaselinePath != "" {
+		b := discovery.NewBaseline(tracker)
+		if err := storage.SaveBaseline(*saveBaselinePath, b); err != nil {
+			log.Printf("could not save baseline: %v", err)
+		} else {
+			fmt.Printf("\nBaseline saved to %s\n", *saveBaselinePath)
+		}
 	}
 }

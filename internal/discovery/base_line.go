@@ -4,11 +4,13 @@ import "time"
 
 // Baseline is a point-in-time snapshot of the AP set a Tracker has seen,
 // intended for later comparison (Phase 5: rogue AP / anomaly detection).
-// Deliberately minimal — the SQLite-vs-JSON persistence decision was
-// deferred to Phase 5, so this only captures the in-memory shape for now.
+// Persisted as JSON (see internal/storage) — chosen over SQLite since
+// this is one flat snapshot per run, read/written wholesale rather than
+// queried; revisit only if querying across many stored runs becomes an
+// actual need.
 type Baseline struct {
-	CapturedAt time.Time
-	APs        []BaselineAP
+	CapturedAt time.Time    `json:"captured_at"`
+	APs        []BaselineAP `json:"access_points"`
 }
 
 // BaselineAP is the subset of AccessPoint fields worth comparing across
@@ -16,11 +18,11 @@ type Baseline struct {
 // BeaconCount that reset every run and would show up as "changed" even
 // when nothing meaningful did.
 type BaselineAP struct {
-	BSSID            string
-	SSID             string
-	Channel          int
-	ChannelFrequency int
-	PrivacyEnabled   bool
+	BSSID            string `json:"bssid"`
+	SSID             string `json:"ssid"`
+	Channel          int    `json:"channel"`
+	ChannelFrequency int    `json:"channel_frequency"`
+	PrivacyEnabled   bool   `json:"privacy_enabled"`
 }
 
 // NewBaseline snapshots the current state of a Tracker.
