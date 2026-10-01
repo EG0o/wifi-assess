@@ -68,6 +68,12 @@ func ParsePacket(pkt gopacket.Packet) (*models.Packet, error) {
 			p.HasCapabilityInfo = true
 			p.PrivacyEnabled = capInfo&dot11CapabilityPrivacyBit != 0
 		}
+	case FrameTypeAssociationResp:
+		// Capability (2), status (2), association ID (2).
+		if len(dot11.Payload) >= 6 {
+			p.HasAssociationStatus = true
+			p.AssociationStatusCode = binary.LittleEndian.Uint16(dot11.Payload[2:4])
+		}
 	}
 
 	return p, nil
@@ -82,7 +88,7 @@ const dot11MgmtFixedFieldsLength = 12
 // dot11CapabilityPrivacyBit is bit 4 (0x0010) of the 802.11 capability
 // info field, set when the AP requires encryption (WEP/WPA/WPA2/WPA3 —
 // the capability field alone can't distinguish which; that needs the
-// RSN/WPA information elements, which is Phase 4 territory).
+// RSN/WPA information elements, which are not parsed in this release).
 const dot11CapabilityPrivacyBit = 0x0010
 
 // extractIEsAndCapability manually walks the raw information-element

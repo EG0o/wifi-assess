@@ -13,9 +13,12 @@ type Client struct {
 	// signal, and feeds Phase 4/5 detection later.
 	ProbedSSIDs []string
 
-	// AssociatedBSSID is the AP this client most recently appeared
-	// associated with, inferred from association request/response traffic
-	// between the two. Empty if no association has been observed yet.
+	// LastAssociationTarget is the AP seen in a request or response; this
+	// observation does not establish that association succeeded.
+	LastAssociationTarget string
+
+	// AssociatedBSSID is set only after an observed success response. It is
+	// evidence of a successful exchange at capture time, not current state.
 	AssociatedBSSID string
 
 	FirstSeen time.Time

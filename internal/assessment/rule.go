@@ -25,8 +25,9 @@ type Rule interface {
 // doesn't extract yet — add it there first, then add a rule here, rather
 // than faking a WPS check without the data to back it.
 
-// OpenNetworkRule flags APs observed with the capability info Privacy bit
-// unset — no encryption enabled at all.
+// OpenNetworkRule flags APs that advertise the capability Privacy bit unset.
+// This is an observation; whether an open network violates policy depends on
+// the deployment. A public guest network may intentionally be open.
 type OpenNetworkRule struct{}
 
 func (OpenNetworkRule) ID() string { return "open-network" }
@@ -39,10 +40,10 @@ func (OpenNetworkRule) Evaluate(ap *models.AccessPoint) []models.Finding {
 		BSSID:          ap.BSSID,
 		SSID:           ap.SSID,
 		RuleID:         "open-network",
-		Severity:       SeverityHigh.String(),
-		Title:          "Open (unencrypted) network",
+		Severity:       SeverityMedium.String(),
+		Title:          "Network advertises an unset Privacy bit",
 		Evidence:       "Beacon/probe response capability info has the Privacy bit unset",
-		Recommendation: "Enable WPA2/WPA3 unless this network is intentionally open (e.g. a public captive-portal network) with other protections in place",
+		Recommendation: "Review whether this network is intentionally open; if WLAN confidentiality is required, enable an appropriate WPA2/WPA3 configuration",
 	}}
 }
 
@@ -70,9 +71,8 @@ func (UnknownEncryptionRule) Evaluate(ap *models.AccessPoint) []models.Finding {
 }
 
 // WeakSignalRule is informational context rather than a security finding —
-// flags APs whose last observed signal was weak, which is useful for
-// interpreting other findings (a report based on one faint beacon is
-// less reliable) but isn't itself a risk.
+// flags consistently low observed signal in this capture. Signal depends on
+// the receiver position and hardware, and is not a security risk itself.
 type WeakSignalRule struct {
 	ThresholdDBM int // e.g. -80; anything weaker than this triggers the finding
 }
@@ -80,7 +80,11 @@ type WeakSignalRule struct {
 func (WeakSignalRule) ID() string { return "weak-signal" }
 
 func (r WeakSignalRule) Evaluate(ap *models.AccessPoint) []models.Finding {
-	if !ap.HasSignal || ap.LastSignalStrengthDBM > r.ThresholdDBM {
+	if ap.SignalSampleCount < 5 {
+		return nil
+	}
+	average := ap.SignalSumDBM / ap.SignalSampleCount
+	if average > r.ThresholdDBM {
 		return nil
 	}
 	return []models.Finding{{
@@ -88,8 +92,8 @@ func (r WeakSignalRule) Evaluate(ap *models.AccessPoint) []models.Finding {
 		SSID:           ap.SSID,
 		RuleID:         "weak-signal",
 		Severity:       SeverityInfo.String(),
-		Title:          "Weak signal at capture time",
-		Evidence:       fmt.Sprintf("Last observed signal strength was %d dBm (threshold %d dBm)", ap.LastSignalStrengthDBM, r.ThresholdDBM),
+		Title:          "Low average received signal in this capture",
+		Evidence:       fmt.Sprintf("Mean of %d signal samples was %d dBm (threshold %d dBm)", ap.SignalSampleCount, average, r.ThresholdDBM),
 		Recommendation: "No action needed — informational only; other findings for this AP may be based on limited observation",
 	}}
 }

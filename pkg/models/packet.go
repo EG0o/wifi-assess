@@ -39,6 +39,11 @@ type Packet struct {
 	HasCapabilityInfo bool
 	PrivacyEnabled    bool
 
+	// Association response status is meaningful only when HasAssociationStatus
+	// is true. Status 0 means success; a request alone cannot establish this.
+	HasAssociationStatus  bool
+	AssociationStatusCode uint16
+
 	// Radio metadata, only populated when the capture includes a RadioTap
 	// header — not guaranteed, it depends on the capturing hardware/driver.
 	// Check HasSignal before trusting SignalStrengthDBM.

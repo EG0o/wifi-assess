@@ -28,4 +28,6 @@ type AccessPoint struct {
 	// header, which isn't guaranteed.
 	HasSignal             bool
 	LastSignalStrengthDBM int
+	SignalSampleCount     int
+	SignalSumDBM          int `json:"-"`
 }

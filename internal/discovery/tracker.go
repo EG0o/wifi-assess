@@ -28,8 +28,7 @@ func NewTracker() *Tracker {
 }
 
 // Observe updates AP/client state from a single parsed frame. Safe for
-// concurrent use — needed once Phase 6 live capture lands, though
-// Phase 2/3 file-based usage is single-threaded.
+// concurrent use, though the current file-based CLI processes frames sequentially.
 func (t *Tracker) Observe(p *models.Packet) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -42,11 +41,10 @@ func (t *Tracker) Observe(p *models.Packet) {
 	case wifi.FrameTypeProbeRequest.String():
 		t.observeProbeRequest(p)
 	case wifi.FrameTypeAssociationRequest.String():
-		// Association request: Address2 = client (transmitter), Address1 = AP (receiver).
-		t.observeAssociation(p, p.Address2, p.Address1)
+		// A request identifies a target, not a successful association.
+		t.observeAssociation(p, p.Address2, p.Address1, false)
 	case wifi.FrameTypeAssociationResp.String():
-		// Association response: Address2 = AP (transmitter), Address1 = client (receiver).
-		t.observeAssociation(p, p.Address1, p.Address2)
+		t.observeAssociation(p, p.Address1, p.Address2, p.HasAssociationStatus && p.AssociationStatusCode == 0)
 	}
 }
 
@@ -78,6 +76,8 @@ func (t *Tracker) observeAP(p *models.Packet, isBeacon bool) {
 	if p.HasSignal {
 		ap.HasSignal = true
 		ap.LastSignalStrengthDBM = p.SignalStrengthDBM
+		ap.SignalSampleCount++
+		ap.SignalSumDBM += p.SignalStrengthDBM
 	}
 
 	ap.LastSeen = p.Timestamp
@@ -103,7 +103,7 @@ func (t *Tracker) observeProbeRequest(p *models.Packet) {
 	}
 }
 
-func (t *Tracker) observeAssociation(p *models.Packet, clientMAC, apBSSID string) {
+func (t *Tracker) observeAssociation(p *models.Packet, clientMAC, apBSSID string, success bool) {
 	if clientMAC == "" {
 		return
 	}
@@ -111,7 +111,10 @@ func (t *Tracker) observeAssociation(p *models.Packet, clientMAC, apBSSID string
 	c := t.getOrCreateClient(clientMAC, p.Timestamp)
 	c.LastSeen = p.Timestamp
 	if apBSSID != "" {
-		c.AssociatedBSSID = apBSSID
+		c.LastAssociationTarget = apBSSID
+		if success {
+			c.AssociatedBSSID = apBSSID
+		}
 	}
 }
 
