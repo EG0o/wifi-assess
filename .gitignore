@@ -7,6 +7,10 @@
 *.pcap
 *.pcapng
 
+# Common generated reports/baselines at the repository root
+/report.json
+/baseline.json
+
 # Environment / secrets
 .env
 .env.*
